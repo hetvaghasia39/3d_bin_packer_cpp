@@ -65,6 +65,11 @@ std::vector<long> Bin::getBestRotationOrder(const Item& item) const {
 }
 
 bool Bin::putItem(Item& item, const std::tuple<long, long, long>& p) {
+    // Reject placement if the item is bottom_load_only and y position is not 0
+    if (item.bottom_load_only && std::get<1>(p) != 0) {
+        return false;
+    }
+
     bool fit = false;
     auto rotations = getBestRotationOrder(item);
 
