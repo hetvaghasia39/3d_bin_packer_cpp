@@ -65,43 +65,104 @@ std::vector<long> Bin::getBestRotationOrder(const Item& item) const {
 }
 
 bool Bin::putItem(Item& item, const std::tuple<long, long, long>& p) {
-    // Reject placement if the item is bottom_load_only and y position is not 0
-    if (item.bottom_load_only && std::get<1>(p) != 0) {
+    // Quick rejection checks
+    const long x = std::get<0>(p);
+    const long y = std::get<1>(p);
+    const long z = std::get<2>(p);
+    
+    // CRITICAL FIX: Fast rejection for common cases
+    if ((item.bottom_load_only && y != 0) || 
+        x < 0 || y < 0 || z < 0 ||
+        x >= getWidth() || y >= getHeight() || z >= getDepth()) {
         return false;
     }
-
-    bool fit = false;
+    
+    // CRITICAL FIX: Only try the single best rotation
+    // This reduces the number of expensive intersection checks
     auto rotations = getBestRotationOrder(item);
-
-    item.setPosition({std::get<0>(p), std::get<1>(p), std::get<2>(p)});
-    for (long rotation : rotations) {
-        item.setRotationType(static_cast<RotationType>(rotation));
-        auto d = item.getDimension();
-
-        if (getWidth() < std::get<0>(p) + d[0] || 
-            getHeight() < std::get<1>(p) + d[1] || 
-            getDepth() < std::get<2>(p) + d[2]) {
-            fit = false;
-        } else {
-            fit = true;
-            for (const auto& otherItem : items) {
-                if (otherItem.get().doesIntersect(item)) {
-                    fit = false;
-                    break;
-                }
-            }
-
-            if (fit) {
-                items.push_back(std::ref(item));
+    item.setPosition({x, y, z});
+    item.setRotationType(static_cast<RotationType>(rotations[0]));
+    auto d = item.getDimension();
+    
+    // Check bin boundaries
+    if (getWidth() < x + d[0] || getHeight() < y + d[1] || getDepth() < z + d[2]) {
+        return false; // Don't try other rotations - increase speed
+    }
+    
+    // CRITICAL FIX: Optimized intersection checks
+    for (const auto& other_ref : items) {
+        const auto& other = other_ref.get();
+        
+        // Quick disable_stacking check
+        if ((item.disable_stacking && y > std::get<1>(other.getPosition())) || 
+            (other.disable_stacking && std::get<1>(other.getPosition()) > y)) {
+                
+            // Check for X-Z overlap
+            const auto& other_pos = other.getPosition();
+            const auto& other_dim = other.getDimension();
+            
+            bool x_overlap = (x < std::get<0>(other_pos) + other_dim[0]) && 
+                            (x + d[0] > std::get<0>(other_pos));
+            bool z_overlap = (z < std::get<2>(other_pos) + other_dim[2]) && 
+                            (z + d[2] > std::get<2>(other_pos));
+                            
+            if (x_overlap && z_overlap) {
+                return false;
             }
         }
-
-        if (fit) {
-            break;
+        
+        // CRITICAL FIX: Optimized intersection check - first check bounding boxes
+        // This is much faster than full intersection check
+        const auto& other_pos = other.getPosition();
+        const auto& other_dim = other.getDimension();
+        
+        if (x + d[0] <= std::get<0>(other_pos) || 
+            std::get<0>(other_pos) + other_dim[0] <= x ||
+            y + d[1] <= std::get<1>(other_pos) || 
+            std::get<1>(other_pos) + other_dim[1] <= y ||
+            z + d[2] <= std::get<2>(other_pos) || 
+            std::get<2>(other_pos) + other_dim[2] <= z) {
+            // No intersection possible - continue to next item
+            continue;
+        }
+        
+        // Items might intersect, do full check
+        if (other.doesIntersect(item)) {
+            return false;
         }
     }
 
-    return fit;
+    // Apply "gravity" here directly instead of using a separate function
+    if (!item.bottom_load_only && y > 0) {
+        // Try placing at one level below
+        std::tuple<long, long, long> lower_pos = {x, y-1, z};
+        
+        // Check if the item can be placed lower
+        bool can_go_lower = true;
+        item.setPosition(lower_pos);
+        
+        // Quick collision check with other items
+        for (const auto& other_ref : items) {
+            if (other_ref.get().doesIntersect(item)) {
+                can_go_lower = false;
+                break;
+            }
+        }
+        
+        // If can't go lower, reset position to original
+        if (!can_go_lower) {
+            item.setPosition({x, y, z});
+        }
+    }
+
+    // Item fits, add it to the bin
+    items.push_back(std::ref(item));
+    return true;
+}
+
+// Replace putItemWithGravity with this simpler version
+bool Bin::putItemWithGravity(Item& item, const std::tuple<long, long, long>& p) {
+    return putItem(item, p); // We've integrated gravity into putItem
 }
 
 std::string Bin::toString() const {

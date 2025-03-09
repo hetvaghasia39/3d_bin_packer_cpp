@@ -16,6 +16,9 @@ public:
     std::vector<long> getBestRotationOrder(const Item& item) const;
     bool putItem(Item& item, const std::tuple<long, long, long>& p);
 
+    // Add new method for gravity-assisted placement
+    bool putItemWithGravity(Item& item, const std::tuple<long, long, long>& p);
+
     void addItem(Item& item);
 
     std::string toString() const;
