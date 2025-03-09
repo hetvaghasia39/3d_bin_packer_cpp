@@ -1,0 +1,15 @@
+[project]
+name = "3d-bin-packer-cpp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "setuptools>=75.6.0",
+    "pybind11>=2.13.6",
+    "3d-bin-packer>=0.0.5",
+]
+
+[build-system]
+requires = ["setuptools", "pybind11"]
+build-backend = "setuptools.build_meta"
